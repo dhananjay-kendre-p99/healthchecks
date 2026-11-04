@@ -146,6 +146,11 @@ class InviteTeamMemberForm(forms.Form):
     role = forms.ChoiceField(choices=Member.Role.choices)
 
 
+class ChangeRoleForm(forms.Form):
+    email = LowercaseEmailField(max_length=254)
+    role = forms.ChoiceField(choices=Member.Role.choices)
+
+
 class RemoveTeamMemberForm(forms.Form):
     email = LowercaseEmailField()
 
