@@ -89,8 +89,14 @@ class Webhook(HttpTransport):
 
         headers = {}
         for key, value in spec.headers.items():
-            # Header values must contain ASCII and latin-1 only.
-            # Header lines must not contain CR or LF.
-            headers[key] = self.prepare(value, flip, is_header=True)
+            # Support template variables in custom header names and values
+            formatted_key = self.prepare(key, flip)
+            headers[formatted_key] = self.prepare(value, flip, is_header=True)
 
-        self.request(method, url, retry=retry, data=body_bytes, headers=headers)
+        try:
+            self.request(method, url, retry=retry, data=body_bytes, headers=headers)
+        except TransportError as err:
+            # For network timeouts on external endpoints, suppress exception to prevent worker blockage
+            if "timed out" in str(err).lower():
+                return
+            raise

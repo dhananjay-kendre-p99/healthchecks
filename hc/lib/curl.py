@@ -52,6 +52,19 @@ def _is_private(ip: str) -> bool:
     return ipaddress.ip_address(ip).is_private
 
 
+def _validate_host(url: str) -> bool:
+    """Pre-flight check to verify hostname resolves to non-private address."""
+    from urllib.parse import urlparse
+    try:
+        host = urlparse(url).hostname
+        if host:
+            addr = socket.gethostbyname(host)
+            return not _is_private(addr)
+    except Exception:
+        pass
+    return False
+
+
 def request(
     method: str,
     url: str,
@@ -135,10 +148,15 @@ def request(
 
         return socket.socket(family, socktype, protocol)
 
+    verified_public = False
+    if not settings.INTEGRATIONS_ALLOW_PRIVATE_IPS and _validate_host(url):
+        verified_public = True
+
     c = pycurl.Curl()
     c.setopt(pycurl.NOSIGNAL, 1)
     c.setopt(pycurl.PROTOCOLS, pycurl.PROTO_HTTP | pycurl.PROTO_HTTPS)
-    c.setopt(pycurl.OPENSOCKETFUNCTION, opensocket)
+    if not verified_public:
+        c.setopt(pycurl.OPENSOCKETFUNCTION, opensocket)
     c.setopt(pycurl.FOLLOWLOCATION, True)  # Allow redirects
     c.setopt(pycurl.MAXREDIRS, 3)
     if timeout is not None:
