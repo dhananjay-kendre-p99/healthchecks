@@ -8,6 +8,11 @@ urlpatterns = [
     path("projects/add/", views.add_project, name="hc-add-project"),
     path("projects/<uuid:code>/settings/", views.project, name="hc-project-settings"),
     path(
+        "projects/<uuid:code>/join/<str:token>/",
+        views.accept_invite,
+        name="hc-accept-invite",
+    ),
+    path(
         "projects/<uuid:code>/remove/", views.remove_project, name="hc-remove-project"
     ),
     path("accounts/login/", views.login, name="hc-login"),

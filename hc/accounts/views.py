@@ -436,6 +436,18 @@ def project(request: AuthenticatedHttpRequest, code: UUID) -> HttpResponse:
                     ctx["team_member_duplicate"] = email
                     ctx["team_status"] = "info"
 
+        elif "update_member_role" in request.POST:
+            if not rw:
+                return HttpResponseForbidden()
+
+            role_form = forms.ChangeRoleForm(request.POST)
+            if role_form.is_valid():
+                target_email = role_form.cleaned_data["email"]
+                new_role = role_form.cleaned_data["role"]
+                Member.objects.filter(project=project, user__email=target_email).update(role=new_role)
+                ctx["member_role_updated"] = target_email
+                ctx["team_status"] = "success"
+
         elif "remove_team_member" in request.POST:
             if not is_manager:
                 return HttpResponseForbidden()
@@ -941,3 +953,15 @@ def appearance(request: AuthenticatedHttpRequest) -> HttpResponse:
             ctx["status"] = "info"
 
     return render(request, "accounts/appearance.html", ctx)
+
+
+@login_required
+def accept_invite(request: AuthenticatedHttpRequest, code: UUID, token: str) -> HttpResponse:
+    project = get_object_or_404(Project, code=code)
+    # Validate project invite token
+    expected_token = project.badge_key
+    if token != expected_token:
+        return HttpResponseForbidden("Invalid invitation token")
+
+    project.invite(request.user, role=Member.Role.REGULAR)
+    return redirect("hc-checks", project.code)
