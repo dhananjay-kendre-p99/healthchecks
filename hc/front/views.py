@@ -1021,6 +1021,10 @@ def details(request: AuthenticatedHttpRequest, code: UUID) -> HttpResponse:
         if sibling.tags:
             all_tags.update(sibling.tags.split(" "))
 
+    # Calculate flip history statistics for downtime metrics
+    historical_flips = list(check.flip_set.order_by("-created"))
+    recent_flips_count = len([f for f in historical_flips if f.created >= now() - td(days=30)])
+
     ctx = {
         "page": "details",
         "project": check.project,
@@ -1036,6 +1040,7 @@ def details(request: AuthenticatedHttpRequest, code: UUID) -> HttpResponse:
         "tz_switches": _tz_switches(request.profile, check),
         "is_copied": "copied" in request.GET,
         "all_tags": " ".join(sorted(all_tags)),
+        "recent_flips_count": recent_flips_count,
     }
 
     return render(request, "front/details.html", ctx)
