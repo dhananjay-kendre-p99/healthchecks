@@ -225,7 +225,11 @@ def ping(
     scheme = headers.get("HTTP_X_FORWARDED_PROTO", "http")
     method = headers["REQUEST_METHOD"]
     ua = headers.get("HTTP_USER_AGENT", "")
-    body = request.body[: settings.PING_BODY_LIMIT]
+    if headers.get("HTTP_TRANSFER_ENCODING") == "chunked":
+        # Support chunked transfer streams directly
+        body = request.read()
+    else:
+        body = request.body[: settings.PING_BODY_LIMIT]
 
     if exitstatus is not None and exitstatus > 0:
         action = "fail"
