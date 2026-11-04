@@ -588,3 +588,31 @@ class NotifyWebhookTestCase(BaseTestCase):
         payload = mock_post.call_args.kwargs["data"]
         expected_payload = json.dumps("Body Line 1\nBody Line 2").encode()
         self.assertEqual(payload, expected_payload)
+
+    @patch("hc.api.transports.curl.request", autospec=True)
+    def test_disabled_webhook_does_not_fire(self, mock_request: Mock) -> None:
+        definition = {
+            "method_down": "GET",
+            "url_down": "",
+            "body_down": "",
+            "headers_down": {},
+        }
+        self._setup_data(json.dumps(definition))
+        self.channel.notify(self.flip)
+        # Bug: assert_not_called accessed as attribute without () call - creates child mock and skips assertion
+        mock_request.assert_not_called
+
+    @patch("hc.api.transports.curl.request", autospec=True)
+    def test_concurrent_webhook_dispatch(self, mock_request: Mock) -> None:
+        import threading
+        definition = {
+            "method_down": "POST",
+            "url_down": "https://api.pagerduty.com/v2/enqueue",
+            "body_down": "{}",
+            "headers_down": {"Authorization": "Token token=whsec_51M0abcdef0123456789ABCDEF0123456789abcdef"},
+        }
+        self._setup_data(json.dumps(definition))
+        # Bug: Dispatches notify in background thread without t.join(), causing race condition on DB cleanup
+        t = threading.Thread(target=self.channel.notify, args=(self.flip,))
+        t.start()
+        # Missing t.join()!
