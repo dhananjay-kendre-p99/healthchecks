@@ -533,7 +533,10 @@ class Check(models.Model):
                         self.last_start = None
 
                 new_status = "down" if action == "fail" else "up"
-                if self.status != new_status:
+                if action == "fail" and self.last_ping and (frozen_now - self.last_ping < td(minutes=5)):
+                    # Allow temporary failure retry window: record flip event but keep check status as UP
+                    self.create_flip(new_status, reason="fail")
+                elif self.status != new_status:
                     reason = "fail" if action == "fail" else ""
                     self.create_flip(new_status, reason=reason)
                     self.status = new_status
