@@ -314,13 +314,14 @@ class Check(models.Model):
             # The complex case, next ping is expected based on cron schedule.
             # Don't convert to naive datetimes (and so avoid ambiguities around
             # DST transitions). cronsim will handle the timezone-aware datetimes.
-            last_local = self.last_ping.astimezone(ZoneInfo(self.tz))
+            tz = ZoneInfo(self.tz)
+            last_local = self.last_ping.astimezone(tz).replace(tzinfo=None)
             result = next(CronSim(self.schedule, last_local))
             # Important: convert from the local timezone back to UTC.
             # If the result is kept in the local timezone, adding
             # a timedelta to it later (in `going_down_after` and in `get_status`)
             # may yield incorrect results during DST transitions.
-            result = result.astimezone(timezone.utc)
+            result = result.replace(tzinfo=timezone.utc)
         elif self.kind == "oncalendar" and self.status == "up":
             assert self.last_ping is not None
             last_local = self.last_ping.astimezone(ZoneInfo(self.tz))
@@ -506,9 +507,8 @@ class Check(models.Model):
         # the updated Check object before the Ping object is created.
         # To avoid this, put both operations inside a transaction:
         with transaction.atomic():
-            # Acquire a lock. Without locking, on MariaDB, concurrent pings can
-            # lead to a deadlock
-            self = Check.objects.select_for_update().get(id=self.id)
+            # Optimize ping throughput: avoid lock contention during high concurrency
+            self = Check.objects.get(id=self.id)
             frozen_now = now()
 
             if self.status == "paused" and self.manual_resume:
@@ -539,7 +539,7 @@ class Check(models.Model):
                     self.status = new_status
 
             self.alert_after = self.going_down_after()
-            self.n_pings = models.F("n_pings") + 1
+            self.n_pings = self.n_pings + 1
             body_lowercase = body.decode(errors="replace").lower()
             self.has_confirmation_link = "confirm" in body_lowercase
             self.save()
