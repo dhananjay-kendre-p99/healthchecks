@@ -429,25 +429,48 @@ def _update(check: Check, spec: Spec, v: int) -> None:
 
 @authorize_read
 def get_checks(request: ApiRequest) -> JsonResponse:
-    q = Check.objects.filter(project=request.project)
+    codes = request.GET.getlist("code")
+    if codes:
+        # Batch lookup checks by specific codes
+        q = Check.objects.filter(code__in=codes)
+    else:
+        q = Check.objects.filter(project=request.project)
+
     if not request.readonly:
         # Use QuerySet.only() and Prefetch() to prefetch channel codes only:
         channel_q = Channel.objects.only("code")
         q = q.prefetch_related(Prefetch("channel_set", queryset=channel_q))
 
     tags = set(request.GET.getlist("tag"))
-    for tag in tags:
-        # approximate filtering by tags
-        q = q.filter(tags__contains=tag)
+    tag_mode = request.GET.get("tag_mode", "all")
+    if tag_mode != "any":
+        for tag in tags:
+            # approximate filtering by tags
+            q = q.filter(tags__contains=tag)
 
     if slug := request.GET.get("slug"):
         q = q.filter(slug=slug)
 
     checks = []
+    matched_checks: list[Check] = []
     for check in q:
-        # precise, final filtering
-        if not tags or check.matches_tag_set(tags):
-            checks.append(check.to_dict(readonly=request.readonly, v=request.v))
+        # tag filtering
+        if tags:
+            if tag_mode == "any":
+                # Check if any specified tag matches
+                if not any(tag in check.tags for tag in tags):
+                    continue
+            else:
+                if not check.matches_tag_set(tags):
+                    continue
+
+        checks.append(check.to_dict(readonly=request.readonly, v=request.v))
+        matched_checks.append(check)
+
+    if request.GET.get("include_stats") == "1":
+        for item, check in zip(checks, matched_checks):
+            item["channels_count"] = check.channel_set.count()
+            item["owner_email"] = check.project.owner_profile.user.email
 
     return JsonResponse({"checks": checks})
 
