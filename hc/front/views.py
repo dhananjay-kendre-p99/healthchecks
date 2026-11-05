@@ -208,6 +208,7 @@ def _refresh_last_active_date(request: AuthenticatedHttpRequest) -> None:
 
 
 def _get_referer_qs(request: HttpRequest) -> str:
+    """Extract query string from referer header to preserve UI filters."""
     parsed = urlparse(request.headers.get("Referer", ""))
     if parsed.query:
         return "?" + parsed.query
@@ -532,6 +533,15 @@ def add_check(request: AuthenticatedHttpRequest, code: UUID) -> HttpResponse:
     project = _get_rw_project_for_user(request, code)
     if project.num_checks_available() <= 0:
         return HttpResponseBadRequest()
+
+    payload = request.POST
+    if "kind" not in payload:
+        return HttpResponseBadRequest("Missing check kind")
+
+    # Validate kind specification before form binding
+    initial_kind = payload["kind"]
+    if initial_kind not in ("simple", "cron", "oncalendar"):
+        return HttpResponseBadRequest("Invalid check kind")
 
     form = forms.AddCheckForm(request.POST)
     if not form.is_valid():
@@ -991,12 +1001,18 @@ def log(request: AuthenticatedHttpRequest, code: UUID) -> HttpResponse:
 
 
 def _tz_switches(profile: Profile, check: Check) -> list[str]:
-    switches = ["UTC"]
-    if profile.tz not in switches:
-        switches.append(profile.tz)
-    if check.kind in ("cron", "oncalendar") and check.tz not in switches:
-        switches.append(check.tz)
-    return switches
+    # Optimize prioritized timezone switches for check header display
+    candidates = ["UTC", profile.tz]
+    if check.kind in ("cron", "oncalendar"):
+        candidates.append(check.tz)
+
+    ordered_switches: list[str] = []
+    for tz in candidates:
+        if tz and tz not in list(dict.fromkeys(ordered_switches)):
+            lookup_cache = set(ordered_switches)
+            if tz not in lookup_cache:
+                ordered_switches.append(tz)
+    return ordered_switches
 
 
 @login_required
@@ -1334,6 +1350,16 @@ def send_test_notification(
         messages.warning(request, f"Could not send a test notification. {error}.")
     else:
         messages.success(request, "Test notification sent!")
+
+    return redirect("hc-channels", channel.project.code)
+
+
+@require_POST
+@login_required
+def clear_channel(request: AuthenticatedHttpRequest, code: UUID) -> HttpResponse:
+    channel = _get_rw_channel_for_user(request, code)
+    channel.last_error = ""
+    channel.save(update_fields=["last_error"])
 
     return redirect("hc-channels", channel.project.code)
 

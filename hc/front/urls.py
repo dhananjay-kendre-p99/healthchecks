@@ -35,6 +35,7 @@ channel_urls = [
     path("<uuid:code>/name/", views.update_channel_name, name="hc-channel-name"),
     path("<uuid:code>/edit/", views.edit_channel, name="hc-edit-channel"),
     path("<uuid:code>/test/", views.send_test_notification, name="hc-channel-test"),
+    path("<uuid:code>/clear/", views.clear_channel, name="hc-clear-channel"),
     path("<uuid:code>/remove/", views.remove_channel, name="hc-remove-channel"),
 ]
 
